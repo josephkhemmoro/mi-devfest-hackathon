@@ -2,11 +2,14 @@ import { useEffect, useState } from 'react'
 import { Layout } from '../components/Layout'
 import api from '../lib/api'
 import { Plus, Trash2, ExternalLink, Package } from 'lucide-react'
+import { showToast } from '../components/Toast'
+import { ConfirmDialog } from '../components/Modal'
 
 export default function Inventory() {
   const [items, setItems] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
   const [formData, setFormData] = useState({
     name: '',
     category: '',
@@ -38,19 +41,23 @@ export default function Inventory() {
       setShowForm(false)
       setFormData({ name: '', category: '', current_quantity: 0, minimum_quantity: 0, unit: 'unit', instacart_search: '' })
       fetchItems()
+      showToast('Item added successfully!', 'success')
     } catch (error: any) {
-      alert(error.response?.data?.detail || 'Failed to create item')
+      showToast(error.response?.data?.detail || 'Failed to create item', 'error')
     }
   }
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Delete this item?')) return
-    try {
-      await api.delete(`/api/inventory/${id}`)
-      fetchItems()
-    } catch (error) {
-      alert('Failed to delete item')
+  const handleDelete = async () => {
+    if (deleteConfirmId) {
+      try {
+        await api.delete(`/api/inventory/${deleteConfirmId}`)
+        fetchItems()
+        showToast('Item deleted', 'success')
+      } catch (error) {
+        showToast('Failed to delete item', 'error')
+      }
     }
+    setDeleteConfirmId(null)
   }
 
   const generateOrder = async () => {
@@ -58,12 +65,12 @@ export default function Inventory() {
       const response = await api.post('/api/inventory/generate-order')
       const orders = response.data.orders
       if (orders.length === 0) {
-        alert('No items need reordering')
+        showToast('No items need reordering', 'info')
       } else {
-        alert(`Order generated for ${orders.length} items!`)
+        showToast(`Order generated for ${orders.length} items!`, 'success')
       }
     } catch (error) {
-      alert('Failed to generate order')
+      showToast('Failed to generate order', 'error')
     }
   }
 
@@ -137,7 +144,7 @@ export default function Inventory() {
                         <ExternalLink size={18} className="inline" />
                       </a>
                     )}
-                    <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-700">
+                    <button onClick={() => setDeleteConfirmId(item.id)} className="text-red-600 hover:text-red-700">
                       <Trash2 size={18} />
                     </button>
                   </td>
@@ -146,6 +153,17 @@ export default function Inventory() {
             </tbody>
           </table>
         </div>
+
+        {/* Delete Confirmation Dialog */}
+        <ConfirmDialog
+          isOpen={deleteConfirmId !== null}
+          onClose={() => setDeleteConfirmId(null)}
+          onConfirm={handleDelete}
+          title="Delete Item"
+          message="Are you sure you want to delete this inventory item?"
+          confirmText="Delete"
+          variant="danger"
+        />
       </div>
     </Layout>
   )

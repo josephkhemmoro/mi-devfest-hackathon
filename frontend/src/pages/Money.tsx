@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Layout } from '../components/Layout'
 import api from '../lib/api'
+import { showToast } from '../components/Toast'
 
 export default function Money() {
   const [financials, setFinancials] = useState<any[]>([])
@@ -32,7 +33,7 @@ export default function Money() {
       setFormData({ week_start: '', gross_sales: 0, payroll: 0 })
       fetchFinancials()
     } catch (error: any) {
-      alert(error.response?.data?.detail || 'Failed to create record')
+      showToast(error.response?.data?.detail || 'Failed to create record', 'error')
     }
   }
 
