@@ -5,14 +5,15 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useBusiness } from '../contexts/BusinessContext'
-import { LogOut, LayoutDashboard, Package, Users, Calendar, DollarSign, Bell } from 'lucide-react'
+import { LogOut, LayoutDashboard, Package, Users, Calendar, DollarSign, Bell, Shield } from 'lucide-react'
+import { Permissions } from '../lib/permissions'
 
 interface LayoutProps {
   children: React.ReactNode
 }
 
 export const Layout = ({ children }: LayoutProps) => {
-  const { logout } = useAuth()
+  const { logout, hasPermission, role } = useAuth()
   const { businessName, logoUrl } = useBusiness()
   const navigate = useNavigate()
   const location = useLocation()
@@ -22,14 +23,55 @@ export const Layout = ({ children }: LayoutProps) => {
     navigate('/login')
   }
 
-  const navItems = [
-    { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { path: '/inventory', icon: Package, label: 'Inventory' },
-    { path: '/employees', icon: Users, label: 'Employees' },
-    { path: '/schedule', icon: Calendar, label: 'Schedule' },
-    { path: '/money', icon: DollarSign, label: 'Financials' },
-    { path: '/reminders', icon: Bell, label: 'Reminders' },
+  // Navigation items with permission requirements
+  const allNavItems = [
+    { 
+      path: '/dashboard', 
+      icon: LayoutDashboard, 
+      label: 'Dashboard',
+      permission: Permissions.VIEW_DASHBOARD
+    },
+    { 
+      path: '/inventory', 
+      icon: Package, 
+      label: 'Inventory',
+      permission: Permissions.VIEW_INVENTORY
+    },
+    { 
+      path: '/employees', 
+      icon: Users, 
+      label: 'Employees',
+      permission: Permissions.VIEW_EMPLOYEES
+    },
+    { 
+      path: '/schedule', 
+      icon: Calendar, 
+      label: 'Schedule',
+      permission: Permissions.VIEW_SCHEDULE
+    },
+    { 
+      path: '/money', 
+      icon: DollarSign, 
+      label: 'Financials',
+      permission: Permissions.VIEW_FINANCIALS
+    },
+    { 
+      path: '/reminders', 
+      icon: Bell, 
+      label: 'Reminders',
+      permission: Permissions.VIEW_REMINDERS
+    },
+    { 
+      path: '/admin/permissions', 
+      icon: Shield, 
+      label: 'Manage Access',
+      permission: Permissions.MANAGE_PERMISSIONS,
+      adminOnly: true
+    },
   ]
+
+  // Filter nav items based on permissions
+  const navItems = allNavItems.filter(item => hasPermission(item.permission))
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -50,7 +92,9 @@ export const Layout = ({ children }: LayoutProps) => {
               )}
               <div>
                 <h1 className="text-xl font-bold text-gray-900">{businessName || 'MainStreet Copilot'}</h1>
-                <p className="text-xs text-gray-500">Business Operating System</p>
+                <p className="text-xs text-gray-500">
+                  Business Operating System {role && <span className="text-primary-600">• {role.charAt(0).toUpperCase() + role.slice(1)}</span>}
+                </p>
               </div>
             </div>
 
@@ -81,10 +125,13 @@ export const Layout = ({ children }: LayoutProps) => {
                     isActive
                       ? 'text-primary-600 border-b-2 border-primary-600'
                       : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                  }`}
+                  } ${(item as any).adminOnly ? 'bg-purple-50' : ''}`}
                 >
                   <Icon size={18} />
                   <span>{item.label}</span>
+                  {(item as any).adminOnly && (
+                    <Shield size={14} className="text-purple-600" />
+                  )}
                 </Link>
               )
             })}

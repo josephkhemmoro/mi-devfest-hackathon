@@ -5,7 +5,7 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { Building2 } from 'lucide-react'
+import { Building2, X, AlertCircle } from 'lucide-react'
 
 export default function SignUp() {
   const [email, setEmail] = useState('')
@@ -44,8 +44,21 @@ export default function SignUp() {
         </div>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
-            {error}
+          <div className="mb-4 p-4 bg-red-50 border-2 border-red-300 text-red-800 rounded-lg">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="font-semibold text-sm mb-1">Sign Up Failed</h3>
+                <p className="text-sm">{error}</p>
+              </div>
+              <button
+                onClick={() => setError('')}
+                className="text-red-400 hover:text-red-600 transition"
+                aria-label="Dismiss error"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
           </div>
         )}
 

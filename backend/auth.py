@@ -36,10 +36,28 @@ async def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
                 detail="No business associated with user. Contact support."
             )
         
+        # Get user profile with role and permissions
+        profile_result = supabase.table("profiles")\
+            .select("role, custom_permissions, is_active")\
+            .eq("id", user.id)\
+            .single()\
+            .execute()
+        
+        if not profile_result.data or not profile_result.data.get("is_active", True):
+            raise HTTPException(
+                status_code=403,
+                detail="User account is inactive"
+            )
+        
+        role = profile_result.data.get("role", "employee")
+        custom_permissions = profile_result.data.get("custom_permissions", [])
+        
         return {
             "user_id": user.id,
             "email": user.email,
             "business_id": business_id,
+            "role": role,
+            "custom_permissions": custom_permissions,
             "metadata": user.user_metadata
         }
         

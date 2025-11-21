@@ -12,6 +12,7 @@ import Employees from './pages/Employees'
 import Schedule from './pages/Schedule'
 import Money from './pages/Money'
 import Reminders from './pages/Reminders'
+import PermissionsAdmin from './pages/PermissionsAdmin'
 
 function App() {
   return (
@@ -30,6 +31,7 @@ function App() {
             <Route path="/schedule" element={<ProtectedRoute><Schedule /></ProtectedRoute>} />
             <Route path="/money" element={<ProtectedRoute><Money /></ProtectedRoute>} />
             <Route path="/reminders" element={<ProtectedRoute><Reminders /></ProtectedRoute>} />
+            <Route path="/admin/permissions" element={<ProtectedRoute><PermissionsAdmin /></ProtectedRoute>} />
             
             {/* Default redirect */}
             <Route path="/" element={<Navigate to="/login" replace />} />

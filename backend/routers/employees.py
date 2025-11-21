@@ -40,12 +40,59 @@ async def create_employee(
     employee: EmployeeCreate,
     current_user: dict = Depends(get_current_user)
 ):
-    """Create new employee"""
+    """Create new employee (and optionally user account)"""
     business_id = current_user["business_id"]
     supabase = get_supabase()
     
-    # Create employee
-    emp_data = employee.model_dump(exclude={"availability"})
+    # If create_user_account is True, create Supabase Auth user
+    if employee.create_user_account:
+        if not employee.email:
+            raise HTTPException(status_code=400, detail="Email required to create user account")
+        
+        # Import here to avoid circular dependency
+        import secrets
+        import string
+        
+        # Generate temporary password
+        alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+        temp_password = ''.join(secrets.choice(alphabet) for i in range(12))
+        
+        try:
+            # Create auth user using sign_up (service role auto-confirms)
+            auth_result = supabase.auth.sign_up({
+                "email": employee.email,
+                "password": temp_password,
+                "options": {
+                    "data": {
+                        "business_id": business_id,
+                        "full_name": employee.full_name
+                    }
+                }
+            })
+            
+            if auth_result.user:
+                # Create profile with email
+                supabase.table("profiles").insert({
+                    "id": auth_result.user.id,
+                    "business_id": business_id,
+                    "email": employee.email,
+                    "full_name": employee.full_name,
+                    "role": "employee",
+                    "is_active": True
+                }).execute()
+                
+                print(f"[EMPLOYEE] ✅ Created user account for {employee.email}")
+                print(f"[EMPLOYEE] 🔑 Temp password: {temp_password}")
+            else:
+                print(f"[EMPLOYEE] ❌ Failed: No user returned from sign_up")
+        except Exception as e:
+            print(f"[EMPLOYEE] ❌ Failed to create user account: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            # Continue creating employee even if user creation fails
+    
+    # Create employee in employees table (exclude email - it's only for auth users)
+    emp_data = employee.model_dump(exclude={"availability", "create_user_account", "email"})
     emp_data["business_id"] = business_id
     
     emp_result = supabase.table("employees").insert(emp_data).execute()

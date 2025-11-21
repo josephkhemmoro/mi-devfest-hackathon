@@ -21,6 +21,8 @@ class AuthResponse(BaseModel):
     business_id: str
     business_name: str
     logo_url: Optional[str] = None
+    role: str = "employee"
+    permissions: List[str] = []
 
 # ==================== BUSINESS MODELS ====================
 
@@ -80,10 +82,12 @@ class WatsonXOrderResponse(BaseModel):
 
 class EmployeeCreate(BaseModel):
     full_name: str
+    email: Optional[str] = None
     role: Optional[str] = None
     strength: Literal['strong', 'normal', 'new'] = 'normal'
     active: bool = True
     availability: List[str] = []  # List of days: ['mon', 'tue', ...]
+    create_user_account: bool = False  # If true, creates login account
 
     @field_validator('availability')
     def validate_days(cls, v):
@@ -195,3 +199,25 @@ class DashboardStats(BaseModel):
     active_employees: int
     upcoming_shifts: int
     todays_reminders: List[ReminderResponse]
+
+# ==================== PERMISSION & ROLE MODELS ====================
+
+class PermissionResponse(BaseModel):
+    name: str
+    category: str
+    description: Optional[str] = None
+
+class UserPermissionsResponse(BaseModel):
+    user_id: str
+    full_name: str
+    email: str
+    role: str
+    custom_permissions: List[str]
+    all_permissions: List[str]  # Combined role + custom permissions
+    is_active: bool
+
+class UpdateUserPermissions(BaseModel):
+    custom_permissions: List[str]
+
+class UpdateUserRole(BaseModel):
+    role: Literal["admin", "employee"]
