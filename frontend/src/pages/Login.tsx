@@ -37,7 +37,7 @@ export default function Login() {
           <div className="inline-flex items-center justify-center w-16 h-16 bg-primary-500 rounded-xl mb-4">
             <Building2 className="text-white" size={32} />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">MainStreet Copilot</h1>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Astra ERP</h1>
           <p className="text-gray-600">Sign in to your business</p>
         </div>
 

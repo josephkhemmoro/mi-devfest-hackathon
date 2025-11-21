@@ -2,13 +2,14 @@
 MainStreet Copilot - Multi-Tenant SaaS Backend
 FastAPI application with Supabase, WatsonX AI
 """
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
 from typing import Optional
 
-from models import SignUpRequest, LoginRequest, AuthResponse, BusinessResponse
+from models import LoginRequest, AuthResponse, BusinessResponse
+import uuid
 from db import get_supabase
 from routers import inventory, employees, schedule, money, reminders, dashboard, permissions_admin, employee_invites
 
@@ -51,36 +52,74 @@ async def root():
 # ==================== AUTHENTICATION ====================
 
 @app.post("/api/auth/signup", response_model=AuthResponse)
-async def signup(signup_data: SignUpRequest):
+async def signup(
+    email: str = Form(...),
+    password: str = Form(...),
+    business_name: str = Form(...),
+    full_name: str = Form(...),
+    logo: Optional[UploadFile] = File(None)
+):
     """
-    Sign up new user and create business.
+    Sign up new user and create business with optional logo.
     
     Flow:
-    1. Create business record
-    2. Sign up user with Supabase Auth
-    3. Store business_id in user metadata
-    4. Return auth tokens + business info
+    1. Upload logo to Supabase Storage (if provided)
+    2. Create business record with logo URL
+    3. Sign up user with Supabase Auth
+    4. Create admin profile
+    5. Return auth tokens + business info
     """
     supabase = get_supabase()
     
     try:
-        # 1. Create business
-        business_result = supabase.table("businesses").insert({
-            "name": signup_data.business_name,
-            "logo_url": None  # Will be updated after logo upload
-        }).execute()
+        print(f"[SIGNUP] Creating business: {business_name}")
+        print(f"[SIGNUP] Admin email: {email}")
         
-        business = business_result.data[0]
-        business_id = business["id"]
+        business_id = str(uuid.uuid4())
+        logo_url = None
+        
+        # Upload logo to Supabase Storage if provided
+        if logo and logo.filename:
+            print(f"[SIGNUP] Uploading logo: {logo.filename}")
+            try:
+                # Read file content
+                logo_content = await logo.read()
+                
+                # Generate unique filename
+                file_ext = logo.filename.split('.')[-1] if '.' in logo.filename else 'png'
+                logo_filename = f"{business_id}.{file_ext}"
+                
+                # Upload to Supabase Storage
+                storage_result = supabase.storage.from_("business_logos").upload(
+                    logo_filename,
+                    logo_content,
+                    {"content-type": logo.content_type or "image/png"}
+                )
+                
+                # Get public URL
+                logo_url = supabase.storage.from_("business_logos").get_public_url(logo_filename)
+                print(f"[SIGNUP] Logo uploaded: {logo_url}")
+                
+            except Exception as logo_error:
+                print(f"[SIGNUP] Logo upload failed: {str(logo_error)}")
+                # Continue without logo if upload fails
+        
+        # 1. Create business with logo
+        business_result = supabase.table("businesses").insert({
+            "id": business_id,
+            "name": business_name,
+            "logo_url": logo_url,
+            "created_at": "now()"
+        }).execute()
         
         # 2. Sign up user with business_id in metadata
         auth_result = supabase.auth.sign_up({
-            "email": signup_data.email,
-            "password": signup_data.password,
+            "email": email,
+            "password": password,
             "options": {
                 "data": {
                     "business_id": business_id,
-                    "business_name": signup_data.business_name
+                    "business_name": business_name
                 }
             }
         })
@@ -94,10 +133,10 @@ async def signup(signup_data: SignUpRequest):
         supabase.table("profiles").insert({
             "id": auth_result.user.id,
             "business_id": business_id,
-            "email": signup_data.email,
-            "full_name": signup_data.full_name,  # Use provided full name
-            "role": "admin",  # First user is always admin
-            "is_admin": True  # Set admin flag
+            "email": email,
+            "full_name": full_name,
+            "role": "admin",
+            "is_admin": True
         }).execute()
         
         # Check if session exists (it won't if email confirmation is required)
@@ -116,8 +155,8 @@ async def signup(signup_data: SignUpRequest):
             "refresh_token": auth_result.session.refresh_token,
             "user_id": auth_result.user.id,
             "business_id": business_id,
-            "business_name": signup_data.business_name,
-            "logo_url": None,
+            "business_name": business_name,
+            "logo_url": logo_url,
             "role": "admin",
             "permissions": user_permissions
         }

@@ -86,12 +86,12 @@ export const Layout = ({ children }: LayoutProps) => {
               ) : (
                 <div className="h-10 w-10 bg-primary-500 rounded-lg flex items-center justify-center">
                   <span className="text-white font-bold text-xl">
-                    {businessName?.charAt(0) || 'M'}
+                    {businessName?.charAt(0) || 'A'}
                   </span>
                 </div>
               )}
               <div>
-                <h1 className="text-xl font-bold text-gray-900">{businessName || 'MainStreet Copilot'}</h1>
+                <h1 className="text-xl font-bold text-gray-900">{businessName || 'Astra ERP'}</h1>
                 <p className="text-xs text-gray-500">
                   Business Operating System {role && <span className="text-primary-600">• {role.charAt(0).toUpperCase() + role.slice(1)}</span>}
                 </p>

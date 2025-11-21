@@ -13,7 +13,7 @@ interface AuthContextType {
   permissions: string[]
   loading: boolean
   login: (email: string, password: string) => Promise<void>
-  signup: (email: string, password: string, businessName: string, fullName: string) => Promise<void>
+  signup: (email: string, password: string, businessName: string, fullName: string, logo: File | null) => Promise<void>
   logout: () => void
   hasPermission: (permission: string) => boolean
   hasAnyPermission: (...permissions: string[]) => boolean
@@ -71,13 +71,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }
 
-  const signup = async (email: string, password: string, businessName: string, fullName: string) => {
+  const signup = async (email: string, password: string, businessName: string, fullName: string, logo: File | null) => {
     try {
-      const response = await api.post('/api/auth/signup', {
-        email,
-        password,
-        business_name: businessName,
-        full_name: fullName,
+      // Create FormData to handle file upload
+      const formData = new FormData()
+      formData.append('email', email)
+      formData.append('password', password)
+      formData.append('business_name', businessName)
+      formData.append('full_name', fullName)
+      if (logo) {
+        formData.append('logo', logo)
+      }
+
+      const response = await api.post('/api/auth/signup', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
       })
       const { access_token, user_id, business_id, role, permissions } = response.data
 
