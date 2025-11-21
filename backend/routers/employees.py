@@ -1,11 +1,41 @@
 """Employee management routes"""
 from fastapi import APIRouter, Depends, HTTPException
 from typing import List
+from pydantic import BaseModel
 from models import EmployeeCreate, EmployeeUpdate, EmployeeResponse
 from auth import get_current_user
 from db import get_supabase
 
 router = APIRouter(prefix="/api/employees", tags=["employees"])
+
+class UpdateAdminStatus(BaseModel):
+    is_admin: bool
+
+@router.get("/profiles")
+async def get_employee_profiles(current_user: dict = Depends(get_current_user)):
+    """Get all employees for the business - simple and consistent"""
+    business_id = current_user["business_id"]
+    supabase = get_supabase()
+    
+    # Get all employees - simple query
+    result = supabase.table("profiles")\
+        .select("id, email, full_name, is_admin, is_active")\
+        .eq("business_id", business_id)\
+        .order("full_name")\
+        .execute()
+    
+    # Return simple employee list
+    employees = []
+    for user in result.data:
+        employees.append({
+            "user_id": user["id"],
+            "full_name": user.get("full_name", "Unknown"),
+            "email": user.get("email", "No email"),
+            "is_admin": user.get("is_admin", False),
+            "is_active": user.get("is_active", True)
+        })
+    
+    return employees
 
 @router.get("/", response_model=List[EmployeeResponse])
 async def get_employees(current_user: dict = Depends(get_current_user)):
@@ -114,6 +144,65 @@ async def create_employee(
     
     new_employee["availability"] = employee.availability
     return new_employee
+
+@router.put("/profiles/{user_id}/admin")
+async def update_admin_status(
+    user_id: str,
+    admin_update: UpdateAdminStatus,
+    current_user: dict = Depends(get_current_user)
+):
+    """Update admin status for an employee - simple toggle"""
+    business_id = current_user["business_id"]
+    supabase = get_supabase()
+    
+    # Only admins can change admin status
+    admin_profile = supabase.table("profiles")\
+        .select("is_admin")\
+        .eq("id", current_user["user_id"])\
+        .single()\
+        .execute()
+    
+    if not admin_profile.data or not admin_profile.data.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="Only admins can change admin status")
+    
+    # Prevent changing own admin status
+    if user_id == current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="Cannot change your own admin status")
+    
+    # Verify user belongs to same business
+    user_result = supabase.table("profiles")\
+        .select("id, business_id")\
+        .eq("id", user_id)\
+        .single()\
+        .execute()
+    
+    if not user_result.data:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if user_result.data["business_id"] != business_id:
+        raise HTTPException(status_code=403, detail="User belongs to different business")
+    
+    # Update BOTH is_admin AND role to keep them in sync
+    new_role = "admin" if admin_update.is_admin else "employee"
+    
+    update_result = supabase.table("profiles")\
+        .update({
+            "is_admin": admin_update.is_admin,
+            "role": new_role
+        })\
+        .eq("id", user_id)\
+        .execute()
+    
+    print(f"[ADMIN_UPDATE] Updated user {user_id}: is_admin={admin_update.is_admin}, role={new_role}")
+    print(f"[ADMIN_UPDATE] Result: {update_result.data}")
+    
+    return {
+        "message": f"User updated to {new_role}",
+        "user_id": user_id,
+        "is_admin": admin_update.is_admin,
+        "role": new_role,
+        "success": True
+    }
 
 @router.put("/{employee_id}", response_model=EmployeeResponse)
 async def update_employee(

@@ -26,12 +26,12 @@ async def get_all_permissions(current_user: dict = Depends(require_permission(Pe
     return result.data
 
 @router.get("/users", response_model=List[UserPermissionsResponse])
-async def get_all_users_permissions(current_user: dict = Depends(require_permission(Permissions.MANAGE_PERMISSIONS))):
-    """Get all users in the business with their permissions"""
+async def get_all_users_permissions(current_user: dict = Depends(require_permission(Permissions.VIEW_EMPLOYEES))):
+    """Get all users in the business with their permissions (all employees have login accounts)"""
     business_id = current_user["business_id"]
     supabase = get_supabase()
     
-    # Get all users in business with emails
+    # Get all users with login accounts (all employees must have login)
     users_result = supabase.table("profiles")\
         .select("id, email, full_name, role, custom_permissions, is_active")\
         .eq("business_id", business_id)\
@@ -43,8 +43,6 @@ async def get_all_users_permissions(current_user: dict = Depends(require_permiss
         user_id = user["id"]
         role = user.get("role", "employee")
         custom_perms = user.get("custom_permissions", [])
-        
-        # Get email from profiles
         email = user.get("email", "No email")
         
         # Get all permissions for this user

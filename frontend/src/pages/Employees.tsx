@@ -1,33 +1,21 @@
 import { useEffect, useState } from 'react'
 import { Layout } from '../components/Layout'
 import api from '../lib/api'
-import { UserPlus, Mail, Copy, Check } from 'lucide-react'
+import { UserPlus, Copy, Check } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
-import { Permissions } from '../lib/permissions'
 
 export default function Employees() {
-  const { hasPermission } = useAuth()
+  const { role } = useAuth()
+  const isAdmin = role === 'admin'
   const [employees, setEmployees] = useState<any[]>([])
-  const [showForm, setShowForm] = useState(false)
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [inviteResult, setInviteResult] = useState<any>(null)
   const [copiedPassword, setCopiedPassword] = useState(false)
-  const [formData, setFormData] = useState({
-    full_name: '',
-    email: '',
-    role: '',
-    strength: 'normal' as 'strong' | 'normal' | 'new',
-    active: true,
-    availability: [] as string[],
-    create_user_account: false
-  })
   const [inviteData, setInviteData] = useState({
     email: '',
     full_name: '',
     role: 'employee'
   })
-
-  const days = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
 
   useEffect(() => {
     fetchEmployees()
@@ -35,41 +23,12 @@ export default function Employees() {
 
   const fetchEmployees = async () => {
     try {
-      const response = await api.get('/api/employees/')
+      // Fetch from profiles table to get user accounts
+      const response = await api.get('/api/employees/profiles')
       setEmployees(response.data)
     } catch (error) {
       console.error('Failed to fetch employees:', error)
     }
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    try {
-      await api.post('/api/employees/', formData)
-      setShowForm(false)
-      setFormData({ 
-        full_name: '', 
-        email: '',
-        role: '', 
-        strength: 'normal', 
-        active: true, 
-        availability: [],
-        create_user_account: false
-      })
-      fetchEmployees()
-      alert('Employee created successfully!')
-    } catch (error: any) {
-      alert(error.response?.data?.detail || 'Failed to create employee')
-    }
-  }
-
-  const toggleDay = (day: string) => {
-    setFormData(prev => ({
-      ...prev,
-      availability: prev.availability.includes(day) 
-        ? prev.availability.filter(d => d !== day)
-        : [...prev.availability, day]
-    }))
   }
 
   const handleInvite = async (e: React.FormEvent) => {
@@ -81,6 +40,22 @@ export default function Employees() {
       fetchEmployees()
     } catch (error: any) {
       alert(error.response?.data?.detail || 'Failed to invite employee')
+    }
+  }
+
+  const handleAdminToggle = async (userId: string, isAdminStatus: boolean) => {
+    try {
+      console.log('[ADMIN_TOGGLE] Updating user:', userId, 'to is_admin:', isAdminStatus)
+      const response = await api.put(`/api/employees/profiles/${userId}/admin`, { is_admin: isAdminStatus })
+      console.log('[ADMIN_TOGGLE] Response:', response.data)
+      
+      await fetchEmployees()
+      console.log('[ADMIN_TOGGLE] Employees refreshed')
+      
+      alert(`✅ User is now ${isAdminStatus ? 'an Admin' : 'an Employee'}`)
+    } catch (error: any) {
+      console.error('[ADMIN_TOGGLE] Error:', error)
+      alert(error.response?.data?.detail || 'Failed to update admin status')
     }
   }
 
@@ -102,125 +77,61 @@ export default function Employees() {
     <Layout>
       <div className="space-y-6">
         <div className="flex justify-between items-center">
-          <h1 className="text-3xl font-bold text-gray-900">Employee Management</h1>
-          <div className="flex gap-2">
-            {hasPermission(Permissions.EDIT_EMPLOYEES) && (
-              <button 
-                onClick={() => setShowInviteModal(true)} 
-                className="px-4 py-2 bg-primary-600 text-white rounded-lg flex items-center gap-2 hover:bg-primary-700"
-              >
-                <Mail className="w-4 h-4" />
-                Invite via Email
-              </button>
-            )}
+          <h1 className="text-3xl font-bold text-gray-900">Employees</h1>
+          {isAdmin && (
             <button 
-              onClick={() => setShowForm(!showForm)} 
-              className="px-4 py-2 bg-gray-900 text-white rounded-lg flex items-center gap-2"
+              onClick={() => setShowInviteModal(true)} 
+              className="px-4 py-2 bg-primary-600 text-white rounded-lg flex items-center gap-2 hover:bg-primary-700"
             >
               <UserPlus className="w-4 h-4" />
-              Add Employee
+              Invite Employee
             </button>
-          </div>
+          )}
         </div>
 
-        {showForm && (
-          <div className="bg-white p-6 rounded-lg shadow">
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
-                <input 
-                  placeholder="John Doe" 
-                  required 
-                  value={formData.full_name} 
-                  onChange={(e) => setFormData({...formData, full_name: e.target.value})} 
-                  className="w-full px-4 py-2 border rounded-lg" 
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email (Optional)</label>
-                <input 
-                  type="email"
-                  placeholder="john@example.com" 
-                  value={formData.email} 
-                  onChange={(e) => setFormData({...formData, email: e.target.value})} 
-                  className="w-full px-4 py-2 border rounded-lg" 
-                />
-                <p className="text-xs text-gray-500 mt-1">Required if creating user account</p>
-              </div>
-              
-              <div>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={formData.create_user_account}
-                    onChange={(e) => setFormData({...formData, create_user_account: e.target.checked})}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm font-medium text-gray-700">Create login account for this employee</span>
-                </label>
-                <p className="text-xs text-gray-500 ml-6">Allows employee to login and access the system</p>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Job Role</label>
-                <input 
-                  placeholder="Server, Cook, Manager..." 
-                  value={formData.role} 
-                  onChange={(e) => setFormData({...formData, role: e.target.value})} 
-                  className="w-full px-4 py-2 border rounded-lg" 
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Strength Level</label>
-                <select 
-                  value={formData.strength} 
-                  onChange={(e) => setFormData({...formData, strength: e.target.value as any})} 
-                  className="w-full px-4 py-2 border rounded-lg"
-                >
-                  <option value="strong">Strong (Experienced)</option>
-                  <option value="normal">Normal</option>
-                  <option value="new">New (Training)</option>
-                </select>
-              </div>
-              <div>
-                <p className="font-medium mb-2">Availability:</p>
-                <div className="flex gap-2">
-                  {days.map(day => (
-                    <button
-                      key={day}
-                      type="button"
-                      onClick={() => toggleDay(day)}
-                      className={`px-3 py-2 rounded ${formData.availability.includes(day) ? 'bg-primary-600 text-white' : 'bg-gray-200'}`}
-                    >
-                      {day.toUpperCase()}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <button type="submit" className="w-full bg-primary-600 text-white py-2 rounded">Create Employee</button>
-            </form>
-          </div>
-        )}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <p className="text-sm text-blue-800">
+            <strong>Note:</strong> All employees must be invited via email to get login access. 
+            Use the "Invite Employee" button above to add new team members.
+          </p>
+        </div>
+
 
         <div className="grid gap-4">
           {employees.map((emp) => (
-            <div key={emp.id} className="bg-white p-6 rounded-lg shadow">
+            <div key={emp.user_id} className="bg-white p-6 rounded-lg shadow">
               <div className="flex justify-between items-start">
-                <div>
-                  <h3 className="text-xl font-bold">{emp.full_name}</h3>
-                  <p className="text-gray-600">{emp.role}</p>
-                  <p className="text-sm mt-2">
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${emp.strength === 'strong' ? 'bg-green-100 text-green-800' : emp.strength === 'new' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100'}`}>
-                      {emp.strength.toUpperCase()}
+                <div className="flex-1">
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-xl font-bold">{emp.full_name}</h3>
+                    <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                      emp.is_admin ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      {emp.is_admin ? 'Admin' : 'Employee'}
                     </span>
-                    <span className={`ml-2 px-2 py-1 rounded text-xs ${emp.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                      {emp.active ? 'Active' : 'Inactive'}
+                    <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                      emp.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                    }`}>
+                      {emp.is_active ? 'Active' : 'Inactive'}
                     </span>
-                  </p>
-                  <p className="text-sm mt-2 text-gray-600">Available: {emp.availability.map((d: string) => d.toUpperCase()).join(', ') || 'None'}</p>
+                  </div>
+                  <p className="text-gray-600 text-sm mt-1">{emp.email}</p>
                 </div>
+                
+                {/* Simple Admin Toggle */}
+                {isAdmin && (
+                  <div className="ml-4">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Access Level</label>
+                    <select
+                      value={emp.is_admin ? 'admin' : 'employee'}
+                      onChange={(e) => handleAdminToggle(emp.user_id, e.target.value === 'admin')}
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    >
+                      <option value="employee">Employee</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </div>
+                )}
               </div>
             </div>
           ))}
