@@ -141,40 +141,40 @@ export default function Employees() {
         {showInviteModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg max-w-md w-full p-6">
-              <h2 className="text-2xl font-bold mb-4">Invite Employee via Email</h2>
+              <h2 className="text-2xl font-bold mb-4 text-gray-900">Invite Employee via Email</h2>
               
               {!inviteResult ? (
                 <form onSubmit={handleInvite} className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium mb-1">Email Address</label>
+                    <label className="block text-sm font-medium mb-1 text-gray-900">Email Address</label>
                     <input
                       type="email"
                       required
                       value={inviteData.email}
                       onChange={(e) => setInviteData({...inviteData, email: e.target.value})}
-                      className="w-full px-4 py-2 border rounded-lg"
+                      className="w-full px-4 py-2 border rounded-lg text-gray-900 bg-gray-50"
                       placeholder="employee@example.com"
                     />
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium mb-1">Full Name</label>
+                    <label className="block text-sm font-medium mb-1 text-gray-900">Full Name</label>
                     <input
                       type="text"
                       required
                       value={inviteData.full_name}
                       onChange={(e) => setInviteData({...inviteData, full_name: e.target.value})}
-                      className="w-full px-4 py-2 border rounded-lg"
+                      className="w-full px-4 py-2 border rounded-lg text-gray-900 bg-gray-50"
                       placeholder="John Doe"
                     />
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium mb-1">Role</label>
+                    <label className="block text-sm font-medium mb-1 text-gray-900">Role</label>
                     <select
                       value={inviteData.role}
                       onChange={(e) => setInviteData({...inviteData, role: e.target.value})}
-                      className="w-full px-4 py-2 border rounded-lg"
+                      className="w-full px-4 py-2 border rounded-lg text-gray-900 bg-gray-50"
                     >
                       <option value="employee">Employee</option>
                       <option value="admin">Admin</option>
@@ -212,7 +212,7 @@ export default function Employees() {
                       Share this password with the employee. They should change it after first login.
                     </p>
                     <div className="flex items-center gap-2">
-                      <code className="flex-1 bg-white px-3 py-2 rounded border border-yellow-300 font-mono text-sm">
+                      <code className="flex-1 bg-white px-3 py-2 rounded border border-yellow-300 font-mono text-sm text-gray-900">
                         {inviteResult.temporary_password}
                       </code>
                       <button

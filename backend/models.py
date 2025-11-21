@@ -154,7 +154,16 @@ class WatsonXScheduleRequest(BaseModel):
 class FinancialsCreate(BaseModel):
     week_start: date
     gross_sales: float = Field(ge=0)
-    payroll: float = Field(ge=0)
+    payroll: float = Field(ge=0, default=0)
+    cogs: float = Field(ge=0, default=0)  # Cost of Goods Sold
+    rent: float = Field(ge=0, default=0)
+    utilities: float = Field(ge=0, default=0)
+    supplies: float = Field(ge=0, default=0)
+    marketing: float = Field(ge=0, default=0)
+    maintenance: float = Field(ge=0, default=0)
+    insurance: float = Field(ge=0, default=0)
+    processing_fees: float = Field(ge=0, default=0)
+    other_expenses: float = Field(ge=0, default=0)
 
 class FinancialsResponse(BaseModel):
     id: int
@@ -162,6 +171,18 @@ class FinancialsResponse(BaseModel):
     week_start: str
     gross_sales: float
     payroll: float
+    cogs: float
+    rent: float
+    utilities: float
+    supplies: float
+    marketing: float
+    maintenance: float
+    insurance: float
+    processing_fees: float
+    other_expenses: float
+    total_expenses: float
+    net_profit: float
+    profit_margin: float
     payroll_pct: float
     status: str  # "green" | "yellow" | "red"
 
