@@ -151,7 +151,7 @@ export default function Employees() {
           Available this week:
         </div>
         <div className="flex flex-wrap gap-1">
-          {availableDays.map((day, index) => (
+          {availableDays.map((day: string, index: number) => (
             <span key={index} className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
               {day}
             </span>

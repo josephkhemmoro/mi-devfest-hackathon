@@ -530,7 +530,7 @@ export default function Schedule() {
       <Modal
         isOpen={showAddSlotModal}
         onClose={() => setShowAddSlotModal(false)}
-        title={`Add Shift Slot for ${currentDay ? days.find(d => d === currentDay)?.slice(0, 1).toUpperCase() + days.find(d => d === currentDay)?.slice(1) : ''}`}
+        title={`Add Shift Slot for ${currentDay ? currentDay.charAt(0).toUpperCase() + currentDay.slice(1) : ''}`}
         size="sm"
       >
         <div className="space-y-4">

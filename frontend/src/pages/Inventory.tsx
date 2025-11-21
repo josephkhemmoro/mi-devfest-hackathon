@@ -472,7 +472,7 @@ export default function Inventory() {
                           <ExternalLink size={18} />
                         </a>
                         <button 
-                          onClick={() => handleDelete(item.id)} 
+                          onClick={() => setDeleteConfirmId(item.id)} 
                           className="text-red-600 hover:text-red-700 transition"
                           title="Delete item"
                         >
