@@ -3,15 +3,8 @@ import os
 from typing import List, Dict, Any
 from dotenv import load_dotenv
 import json
-
-# Try to import WatsonX, but use fallback if not available
-try:
-    from ibm_watsonx_ai.foundation_models import Model
-    from ibm_watsonx_ai.metanames import GenTextParamsMetaNames as GenParams
-    WATSONX_AVAILABLE = True
-except ImportError:
-    WATSONX_AVAILABLE = False
-    print("WatsonX AI not available - using fallback algorithms")
+from ibm_watsonx_ai.foundation_models import Model
+from ibm_watsonx_ai.metanames import GenTextParamsMetaNames as GenParams
 
 load_dotenv()
 
@@ -21,28 +14,37 @@ class WatsonXClient:
         self.project_id = os.getenv("WATSONX_PROJECT_ID")
         self.url = os.getenv("WATSONX_URL", "https://us-south.ml.cloud.ibm.com")
         
-        self.use_fallback = not WATSONX_AVAILABLE or not self.api_key or not self.project_id
+        # Require WatsonX credentials - no fallback
+        if not self.api_key:
+            raise ValueError("WATSONX_API_KEY environment variable is required")
+        if not self.project_id:
+            raise ValueError("WATSONX_PROJECT_ID environment variable is required")
         
-        if not self.use_fallback:
-            self.credentials = {
-                "url": self.url,
-                "apikey": self.api_key
-            }
-            
-            self.model_id = "meta-llama/llama-3-70b-instruct"
-            
-            self.parameters = {
-                GenParams.DECODING_METHOD: "greedy",
-                GenParams.MAX_NEW_TOKENS: 1000,
-                GenParams.MIN_NEW_TOKENS: 1,
-                GenParams.TEMPERATURE: 0.3,
-                GenParams.REPETITION_PENALTY: 1.1
-            }
+        print("=" * 60)
+        print("🤖 WATSONX AI ENABLED")
+        print("=" * 60)
+        print(f"Model: meta-llama/llama-3-3-70b-instruct")
+        print(f"Project ID: {self.project_id[:8]}...")
+        print(f"API Key: {self.api_key[:10]}...")
+        print("=" * 60)
+        
+        self.credentials = {
+            "url": self.url,
+            "apikey": self.api_key
+        }
+        
+        self.model_id = "meta-llama/llama-3-3-70b-instruct"
+        
+        self.parameters = {
+            GenParams.DECODING_METHOD: "greedy",
+            GenParams.MAX_NEW_TOKENS: 1000,
+            GenParams.MIN_NEW_TOKENS: 1,
+            GenParams.TEMPERATURE: 0.3,
+            GenParams.REPETITION_PENALTY: 1.1
+        }
     
     def _get_model(self):
         """Initialize WatsonX model"""
-        if self.use_fallback:
-            return None
         return Model(
             model_id=self.model_id,
             params=self.parameters,
@@ -57,16 +59,8 @@ class WatsonXClient:
         Input: [{"id": 1, "name": "Fries", "current": 5, "min": 20}]
         Output: [{"id": 1, "order_qty": 15}]
         """
-        # Use fallback if WatsonX not available
-        if self.use_fallback:
-            print("Using fallback inventory ordering algorithm")
-            orders = []
-            for item in items:
-                if item["current"] < item["min"]:
-                    buffer = int((item["min"] - item["current"]) * 0.2)
-                    order_qty = (item["min"] - item["current"]) + buffer
-                    orders.append({"id": item["id"], "order_qty": order_qty})
-            return orders
+        print("🤖 Calling WatsonX AI for inventory ordering...")
+        print(f"   Processing {len(items)} items")
         
         prompt = f"""You are an inventory management AI. Given a list of items with current and minimum quantities, calculate how much to order for each item.
 
@@ -84,32 +78,23 @@ Return a JSON object in this exact format:
 
 JSON Response:"""
 
-        try:
-            model = self._get_model()
-            response = model.generate_text(prompt=prompt)
-            
-            # Parse JSON response
-            response_text = response.strip()
-            
-            # Try to extract JSON from response
-            if "```json" in response_text:
-                response_text = response_text.split("```json")[1].split("```")[0].strip()
-            elif "```" in response_text:
-                response_text = response_text.split("```")[1].split("```")[0].strip()
-            
-            result = json.loads(response_text)
-            return result.get("orders", [])
-            
-        except Exception as e:
-            # Fallback: Simple calculation
-            print(f"WatsonX error: {e}, using fallback")
-            orders = []
-            for item in items:
-                if item["current"] < item["min"]:
-                    buffer = int((item["min"] - item["current"]) * 0.2)
-                    order_qty = (item["min"] - item["current"]) + buffer
-                    orders.append({"id": item["id"], "order_qty": order_qty})
-            return orders
+        model = self._get_model()
+        print("   Sending request to WatsonX Llama-3.3-70B...")
+        response = model.generate_text(prompt=prompt)
+        print("   ✅ Received response from WatsonX AI")
+        
+        # Parse JSON response
+        response_text = response.strip()
+        
+        # Try to extract JSON from response
+        if "```json" in response_text:
+            response_text = response_text.split("```json")[1].split("```")[0].strip()
+        elif "```" in response_text:
+            response_text = response_text.split("```")[1].split("```")[0].strip()
+        
+        result = json.loads(response_text)
+        print(f"   📦 Generated {len(result.get('orders', []))} order recommendations")
+        return result.get("orders", [])
     
     def generate_schedule(
         self, 
@@ -127,36 +112,9 @@ JSON Response:"""
         
         Output: [{"employee_id": 1, "day": "fri"}]
         """
-        # Use fallback if WatsonX not available
-        if self.use_fallback:
-            print("Using fallback scheduling algorithm")
-            shifts = []
-            
-            for rule in staffing_rules:
-                day = rule["day"]
-                required = rule["required"]
-                
-                # Filter available employees for this day
-                available = [
-                    emp for emp in employees 
-                    if day in emp["availability"]
-                ]
-                
-                # Sort: strong first, then new (for pairing)
-                available.sort(key=lambda e: (
-                    0 if e["strength"] == "strong" 
-                    else 2 if e["strength"] == "new" 
-                    else 1
-                ))
-                
-                # Assign shifts up to required count
-                for i in range(min(required, len(available))):
-                    shifts.append({
-                        "employee_id": available[i]["id"],
-                        "day": day
-                    })
-            
-            return shifts
+        print("🤖 Calling WatsonX AI for schedule generation...")
+        print(f"   Week starting: {week_start}")
+        print(f"   {len(employees)} employees, {len(staffing_rules)} days to schedule")
         
         prompt = f"""You are a scheduling AI for a small business. Create an optimal employee schedule.
 
@@ -181,51 +139,23 @@ Return ONLY valid JSON in this exact format:
 
 JSON Response:"""
 
-        try:
-            model = self._get_model()
-            response = model.generate_text(prompt=prompt)
-            
-            # Parse JSON response
-            response_text = response.strip()
-            
-            if "```json" in response_text:
-                response_text = response_text.split("```json")[1].split("```")[0].strip()
-            elif "```" in response_text:
-                response_text = response_text.split("```")[1].split("```")[0].strip()
-            
-            result = json.loads(response_text)
-            return result.get("shifts", [])
-            
-        except Exception as e:
-            # Fallback: Simple round-robin scheduling
-            print(f"WatsonX error: {e}, using fallback")
-            shifts = []
-            
-            for rule in staffing_rules:
-                day = rule["day"]
-                required = rule["required"]
-                
-                # Filter available employees for this day
-                available = [
-                    emp for emp in employees 
-                    if day in emp["availability"]
-                ]
-                
-                # Sort: strong first, then new (for pairing)
-                available.sort(key=lambda e: (
-                    0 if e["strength"] == "strong" 
-                    else 2 if e["strength"] == "new" 
-                    else 1
-                ))
-                
-                # Assign shifts up to required count
-                for i in range(min(required, len(available))):
-                    shifts.append({
-                        "employee_id": available[i]["id"],
-                        "day": day
-                    })
-            
-            return shifts
+        model = self._get_model()
+        print("   Sending request to WatsonX Llama-3.3-70B...")
+        response = model.generate_text(prompt=prompt)
+        print("   ✅ Received response from WatsonX AI")
+        
+        # Parse JSON response
+        response_text = response.strip()
+        
+        if "```json" in response_text:
+            response_text = response_text.split("```json")[1].split("```")[0].strip()
+        elif "```" in response_text:
+            response_text = response_text.split("```")[1].split("```")[0].strip()
+        
+        result = json.loads(response_text)
+        shifts = result.get("shifts", [])
+        print(f"   📅 Generated {len(shifts)} shifts across the week")
+        return shifts
 
 # Singleton instance
 watsonx_client = WatsonXClient()
