@@ -256,7 +256,7 @@ export default function Schedule() {
                   value={aiPreferences}
                   onChange={(e) => setAiPreferences(e.target.value)}
                   placeholder="Enter your scheduling preferences and requirements..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-none"
+                  className="w-full px-3 py-2 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-none placeholder-gray-400"
                   rows={6}
                 />
               </div>

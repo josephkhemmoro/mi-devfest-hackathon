@@ -315,6 +315,44 @@ export default function Money() {
 
           {aiInsights && !aiInsights.error && (
             <div className="bg-white rounded-lg p-6 space-y-4">
+              {/* Critical Warning Banner */}
+              {aiInsights.is_critical && (
+                <div className="bg-red-50 border-2 border-red-500 rounded-lg p-4 mb-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-2xl">🚨</span>
+                    <h3 className="font-bold text-red-900 text-lg">CRITICAL: Immediate Action Required</h3>
+                  </div>
+                  <p className="text-red-800">Your profit margin is below 10%. Review the recommendations below immediately.</p>
+                </div>
+              )}
+
+              {/* Performance Comparison */}
+              {aiInsights.performance_comparison && (
+                <div className="border-b pb-4 mb-4">
+                  <h3 className="font-semibold mb-3 text-gray-900">📈 Performance Comparison</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                      <p className="text-xs text-green-700 font-medium">BEST WEEK</p>
+                      <p className="text-sm text-gray-600">{aiInsights.performance_comparison.best_week.week_start}</p>
+                      <p className="text-lg font-bold text-green-700">{aiInsights.performance_comparison.best_week.profit_margin}% margin</p>
+                      <p className="text-sm text-gray-600">${aiInsights.performance_comparison.best_week.net_profit.toLocaleString()} profit</p>
+                    </div>
+                    <div className={`${aiInsights.is_critical ? 'bg-red-50 border-red-200' : 'bg-blue-50 border-blue-200'} border rounded-lg p-3`}>
+                      <p className={`text-xs font-medium ${aiInsights.is_critical ? 'text-red-700' : 'text-blue-700'}`}>RECENT WEEK</p>
+                      <p className="text-sm text-gray-600">{aiInsights.performance_comparison.recent_week.week_start}</p>
+                      <p className={`text-lg font-bold ${aiInsights.is_critical ? 'text-red-700' : 'text-blue-700'}`}>{aiInsights.performance_comparison.recent_week.profit_margin}% margin</p>
+                      <p className="text-sm text-gray-600">${aiInsights.performance_comparison.recent_week.net_profit.toLocaleString()} profit</p>
+                    </div>
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                      <p className="text-xs text-gray-700 font-medium">AVERAGE</p>
+                      <p className="text-sm text-gray-600">All time</p>
+                      <p className="text-lg font-bold text-gray-700">{aiInsights.performance_comparison.average.profit_margin}% margin</p>
+                      <p className="text-sm text-gray-600">${aiInsights.performance_comparison.average.weekly_revenue.toLocaleString()}/wk</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
               <div className="space-y-4">
                 <div className="whitespace-pre-wrap text-gray-800 leading-relaxed" style={{
                   fontFamily: 'system-ui, -apple-system, sans-serif',
@@ -367,41 +405,51 @@ export default function Money() {
         </div>
 
         {/* Monthly View Table */}
-        {viewMode === 'monthly' && monthlyData.length > 0 && (
+        {viewMode === 'monthly' && (
           <div className="bg-white rounded-lg shadow overflow-hidden">
             <div className="px-6 py-4 border-b">
               <h2 className="text-xl font-bold text-gray-900">Monthly Performance</h2>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Month</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Revenue</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Expenses</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Profit</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Margin</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Weeks</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {monthlyData.map((month) => (
-                    <tr key={month.month} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 text-sm font-medium text-gray-900">{month.month}</td>
-                      <td className="px-6 py-4 text-sm text-gray-900">${month.total_revenue.toLocaleString()}</td>
-                      <td className="px-6 py-4 text-sm text-gray-900">${month.total_expenses.toLocaleString()}</td>
-                      <td className={`px-6 py-4 text-sm font-bold ${month.total_profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        ${month.total_profit.toLocaleString()}
-                      </td>
-                      <td className={`px-6 py-4 text-sm font-bold ${month.profit_margin >= 20 ? 'text-green-600' : month.profit_margin >= 10 ? 'text-yellow-600' : 'text-red-600'}`}>
-                        {month.profit_margin}%
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-600">{month.weeks.length} weeks</td>
+            {monthlyData.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Month</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Revenue</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Expenses</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Profit</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Margin</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Weeks</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y">
+                    {monthlyData.map((month) => (
+                      <tr key={month.month} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                          {new Date(month.month + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-900">${month.total_revenue.toLocaleString()}</td>
+                        <td className="px-6 py-4 text-sm text-gray-900">${month.total_expenses.toLocaleString()}</td>
+                        <td className={`px-6 py-4 text-sm font-bold ${month.total_profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          ${month.total_profit.toLocaleString()}
+                        </td>
+                        <td className={`px-6 py-4 text-sm font-bold ${month.profit_margin >= 20 ? 'text-green-600' : month.profit_margin >= 10 ? 'text-yellow-600' : 'text-red-600'}`}>
+                          {month.profit_margin}%
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600">{month.weeks.length} week{month.weeks.length !== 1 ? 's' : ''}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="px-6 py-12 text-center">
+                <DollarSign className="mx-auto text-gray-400 mb-3" size={48} />
+                <p className="text-gray-600">No monthly data available</p>
+                <p className="text-sm text-gray-500 mt-2">Add financial records to see monthly summaries</p>
+              </div>
+            )}
           </div>
         )}
 
