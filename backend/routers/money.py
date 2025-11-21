@@ -4,6 +4,8 @@ from typing import List
 from models import FinancialsCreate, FinancialsResponse
 from auth import get_current_user
 from db import get_supabase
+from services.watsonx_client import watsonx_client
+import json
 
 router = APIRouter(prefix="/api/financials", tags=["financials"])
 
@@ -123,6 +125,234 @@ async def create_financial_record(
     
     return record
 
+@router.get("/summary")
+async def get_financial_summary(
+    current_user: dict = Depends(get_current_user),
+    month: str = None  # Format: YYYY-MM
+):
+    """Get financial summary (totals) for current business, optionally filtered by month"""
+    business_id = current_user["business_id"]
+    supabase = get_supabase()
+    
+    query = supabase.table("weekly_financials")\
+        .select("*")\
+        .eq("business_id", business_id)
+    
+    # Filter by month if provided
+    if month:
+        # Get records where week_start is in the specified month
+        start_date = f"{month}-01"
+        # Calculate last day of month
+        year, mon = month.split("-")
+        if mon == "12":
+            end_date = f"{int(year)+1}-01-01"
+        else:
+            end_date = f"{year}-{int(mon)+1:02d}-01"
+        
+        query = query.gte("week_start", start_date).lt("week_start", end_date)
+    
+    result = query.execute()
+    
+    if not result.data:
+        return {
+            "total_revenue": 0,
+            "total_expenses": 0,
+            "total_profit": 0,
+            "avg_profit_margin": 0,
+            "record_count": 0
+        }
+    
+    # Calculate totals
+    total_revenue = sum(r.get("gross_sales", 0) for r in result.data)
+    total_expenses = sum(r.get("total_expenses", 0) for r in result.data)
+    total_profit = sum(r.get("net_profit", 0) for r in result.data)
+    avg_profit_margin = sum(r.get("profit_margin", 0) for r in result.data) / len(result.data)
+    
+    return {
+        "total_revenue": round(total_revenue, 2),
+        "total_expenses": round(total_expenses, 2),
+        "total_profit": round(total_profit, 2),
+        "avg_profit_margin": round(avg_profit_margin, 1),
+        "record_count": len(result.data),
+        "month": month
+    }
+
+@router.get("/by-month")
+async def get_financials_by_month(current_user: dict = Depends(get_current_user)):
+    """Get financials grouped by month"""
+    business_id = current_user["business_id"]
+    supabase = get_supabase()
+    
+    result = supabase.table("weekly_financials")\
+        .select("*")\
+        .eq("business_id", business_id)\
+        .order("week_start", desc=False)\
+        .execute()
+    
+    # Group by month
+    monthly_data = {}
+    for record in result.data:
+        month = record["week_start"][:7]  # Extract YYYY-MM
+        
+        if month not in monthly_data:
+            monthly_data[month] = {
+                "month": month,
+                "total_revenue": 0,
+                "total_expenses": 0,
+                "total_profit": 0,
+                "weeks": []
+            }
+        
+        monthly_data[month]["total_revenue"] += record.get("gross_sales", 0)
+        monthly_data[month]["total_expenses"] += record.get("total_expenses", 0)
+        monthly_data[month]["total_profit"] += record.get("net_profit", 0)
+        monthly_data[month]["weeks"].append(record)
+    
+    # Calculate profit margins
+    monthly_list = []
+    for month, data in monthly_data.items():
+        data["profit_margin"] = round((data["total_profit"] / data["total_revenue"] * 100), 1) if data["total_revenue"] > 0 else 0
+        data["total_revenue"] = round(data["total_revenue"], 2)
+        data["total_expenses"] = round(data["total_expenses"], 2)
+        data["total_profit"] = round(data["total_profit"], 2)
+        monthly_list.append(data)
+    
+    return sorted(monthly_list, key=lambda x: x["month"], reverse=True)
+
+@router.post("/analyze")
+async def analyze_financials_with_ai(
+    current_user: dict = Depends(get_current_user),
+    month: str = None  # Optional: analyze specific month
+):
+    """Use Watson AI to analyze financial data and provide insights"""
+    business_id = current_user["business_id"]
+    supabase = get_supabase()
+    
+    # Get financial data
+    query = supabase.table("weekly_financials")\
+        .select("*")\
+        .eq("business_id", business_id)\
+        .order("week_start", desc=True)
+    
+    if month:
+        start_date = f"{month}-01"
+        year, mon = month.split("-")
+        if mon == "12":
+            end_date = f"{int(year)+1}-01-01"
+        else:
+            end_date = f"{year}-{int(mon)+1:02d}-01"
+        query = query.gte("week_start", start_date).lt("week_start", end_date)
+    
+    result = query.execute()
+    
+    if not result.data:
+        return {"error": "No financial data available for analysis"}
+    
+    # Prepare summary for AI
+    total_revenue = sum(r.get("gross_sales", 0) for r in result.data)
+    total_expenses = sum(r.get("total_expenses", 0) for r in result.data)
+    
+    # Aggregate expenses by category
+    expense_categories = {
+        "Cost of Goods Sold": sum(r.get("cogs", 0) for r in result.data),
+        "Payroll": sum(r.get("payroll", 0) for r in result.data),
+        "Rent": sum(r.get("rent", 0) for r in result.data),
+        "Utilities": sum(r.get("utilities", 0) for r in result.data),
+        "Supplies": sum(r.get("supplies", 0) for r in result.data),
+        "Marketing": sum(r.get("marketing", 0) for r in result.data),
+        "Maintenance": sum(r.get("maintenance", 0) for r in result.data),
+        "Insurance": sum(r.get("insurance", 0) for r in result.data),
+        "Processing Fees": sum(r.get("processing_fees", 0) for r in result.data),
+        "Other": sum(r.get("other_expenses", 0) for r in result.data)
+    }
+    
+    net_profit = total_revenue - total_expenses
+    profit_margin = (net_profit / total_revenue * 100) if total_revenue > 0 else 0
+    
+    # Create prompt for Watson
+    prompt = f"""You are a financial analyst. Analyze this data and respond ONLY with the formatted output. NO explanations, NO revisions, NO notes.
+
+DATA:
+Revenue: ${total_revenue:,.2f} | Expenses: ${total_expenses:,.2f} | Profit: ${net_profit:,.2f} ({profit_margin:.1f}%)
+
+TOP EXPENSES:
+{chr(10).join([f'{cat}: ${amt:,.2f} ({amt/total_expenses*100:.1f}%)' for cat, amt in sorted(expense_categories.items(), key=lambda x: x[1], reverse=True)[:3] if amt > 0])}
+
+Return ONLY this format (no other text):
+
+KEY INSIGHTS
+• [insight 1 - max 12 words]
+• [insight 2 - max 12 words]
+
+COST SAVINGS
+• [action 1 with $ amount - max 10 words]
+• [action 2 with $ amount - max 10 words]
+
+WINS
+• [achievement - max 10 words]
+
+RECOMMENDATIONS
+1. [action - max 8 words]
+2. [action - max 8 words]
+3. [action - max 8 words]
+
+CRITICAL: Return ONLY the formatted response above. NO additional text. NO explanations. NO revisions. START with "KEY INSIGHTS" and END after the 3rd recommendation."""
+
+    try:
+        # Call Watson AI using the existing client
+        model = watsonx_client._get_model()
+        print("   🤖 Analyzing financial data with WatsonX AI...")
+        response = model.generate_text(prompt=prompt)
+        print("   ✅ Received AI analysis")
+        
+        # Clean up response - remove any extra text before/after the format
+        analysis = response.strip()
+        
+        # If Watson added extra text, extract only the formatted section
+        if "KEY INSIGHTS" in analysis:
+            # Find start
+            start_idx = analysis.find("KEY INSIGHTS")
+            
+            # Find end (after 3rd recommendation)
+            lines = analysis[start_idx:].split('\n')
+            rec_count = 0
+            end_idx = start_idx
+            for i, line in enumerate(lines):
+                if line.strip().startswith(('1.', '2.', '3.')):
+                    rec_count += 1
+                    if rec_count == 3:
+                        # Found the 3rd recommendation, include next line break
+                        end_idx = start_idx + len('\n'.join(lines[:i+1]))
+                        break
+            
+            if end_idx > start_idx:
+                analysis = analysis[start_idx:end_idx].strip()
+        
+        return {
+            "month": month,
+            "period_weeks": len(result.data),
+            "summary": {
+                "revenue": round(total_revenue, 2),
+                "expenses": round(total_expenses, 2),
+                "profit": round(net_profit, 2),
+                "profit_margin": round(profit_margin, 1)
+            },
+            "expense_breakdown": {k: round(v, 2) for k, v in expense_categories.items() if v > 0},
+            "ai_analysis": analysis
+        }
+        
+    except Exception as e:
+        print(f"[WATSON ERROR] {str(e)}")
+        return {
+            "error": "AI analysis temporarily unavailable",
+            "summary": {
+                "revenue": round(total_revenue, 2),
+                "expenses": round(total_expenses, 2),
+                "profit": round(net_profit, 2),
+                "profit_margin": round(profit_margin, 1)
+            }
+        }
+
 @router.put("/{week_start}", response_model=FinancialsResponse)
 async def update_financial_record(
     week_start: str,
@@ -172,40 +402,6 @@ async def update_financial_record(
     record["status"] = get_financial_status(calculated['profit_margin'])
     
     return record
-
-@router.get("/summary")
-async def get_financial_summary(current_user: dict = Depends(get_current_user)):
-    """Get financial summary (totals) for current business"""
-    business_id = current_user["business_id"]
-    supabase = get_supabase()
-    
-    result = supabase.table("weekly_financials")\
-        .select("*")\
-        .eq("business_id", business_id)\
-        .execute()
-    
-    if not result.data:
-        return {
-            "total_revenue": 0,
-            "total_expenses": 0,
-            "total_profit": 0,
-            "avg_profit_margin": 0,
-            "record_count": 0
-        }
-    
-    # Calculate totals
-    total_revenue = sum(r.get("gross_sales", 0) for r in result.data)
-    total_expenses = sum(r.get("total_expenses", 0) for r in result.data)
-    total_profit = sum(r.get("net_profit", 0) for r in result.data)
-    avg_profit_margin = sum(r.get("profit_margin", 0) for r in result.data) / len(result.data)
-    
-    return {
-        "total_revenue": round(total_revenue, 2),
-        "total_expenses": round(total_expenses, 2),
-        "total_profit": round(total_profit, 2),
-        "avg_profit_margin": round(avg_profit_margin, 1),
-        "record_count": len(result.data)
-    }
 
 @router.delete("/{week_start}")
 async def delete_financial_record(

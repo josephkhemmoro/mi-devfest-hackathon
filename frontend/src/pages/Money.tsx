@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Layout } from '../components/Layout'
 import api from '../lib/api'
-import { DollarSign, TrendingUp, TrendingDown, PieChart } from 'lucide-react'
+import { DollarSign, TrendingUp, TrendingDown, PieChart, Sparkles, Calendar, BarChart3 } from 'lucide-react'
 
 export default function Money() {
   const [financials, setFinancials] = useState<any[]>([])
+  const [monthlyData, setMonthlyData] = useState<any[]>([])
   const [summary, setSummary] = useState<any>(null)
+  const [aiInsights, setAiInsights] = useState<any>(null)
+  const [loadingAI, setLoadingAI] = useState(false)
+  const [selectedMonth, setSelectedMonth] = useState<string>('all')
+  const [viewMode, setViewMode] = useState<'weekly' | 'monthly'>('weekly')
   const [showForm, setShowForm] = useState(false)
   const [selectedWeek, setSelectedWeek] = useState<any>(null)
   const [isEditing, setIsEditing] = useState(false)
@@ -26,8 +31,14 @@ export default function Money() {
 
   useEffect(() => {
     fetchFinancials()
+    fetchMonthlyData()
     fetchSummary()
   }, [])
+
+  useEffect(() => {
+    // Refetch summary when month filter changes
+    fetchSummary()
+  }, [selectedMonth])
 
   const fetchFinancials = async () => {
     try {
@@ -38,12 +49,39 @@ export default function Money() {
     }
   }
 
+  const fetchMonthlyData = async () => {
+    try {
+      const response = await api.get('/api/financials/by-month')
+      setMonthlyData(response.data)
+    } catch (error) {
+      console.error('Failed to fetch monthly data:', error)
+    }
+  }
+
   const fetchSummary = async () => {
     try {
-      const response = await api.get('/api/financials/summary')
+      const url = selectedMonth === 'all' 
+        ? '/api/financials/summary'
+        : `/api/financials/summary?month=${selectedMonth}`
+      const response = await api.get(url)
       setSummary(response.data)
     } catch (error) {
       console.error('Failed to fetch summary:', error)
+    }
+  }
+
+  const fetchAIInsights = async () => {
+    setLoadingAI(true)
+    try {
+      const url = selectedMonth === 'all'
+        ? '/api/financials/analyze'
+        : `/api/financials/analyze?month=${selectedMonth}`
+      const response = await api.post(url)
+      setAiInsights(response.data)
+    } catch (error) {
+      console.error('Failed to fetch AI insights:', error)
+    } finally {
+      setLoadingAI(false)
     }
   }
 
@@ -191,6 +229,158 @@ export default function Money() {
           </div>
         )}
 
+        {/* Month Filter and AI Insights Toggle */}
+        <div className="flex justify-between items-center">
+          <div className="flex gap-2 items-center">
+            <Calendar className="text-gray-600" size={20} />
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="px-4 py-2 border rounded-lg text-gray-900"
+            >
+              <option value="all">All Time</option>
+              {monthlyData.map(m => (
+                <option key={m.month} value={m.month}>{m.month}</option>
+              ))}
+            </select>
+          </div>
+          
+          <div className="flex gap-2">
+            <button
+              onClick={() => setViewMode('weekly')}
+              className={`px-4 py-2 rounded-lg flex items-center gap-2 ${viewMode === 'weekly' ? 'bg-primary-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+            >
+              <BarChart3 size={18} />
+              Weekly
+            </button>
+            <button
+              onClick={() => setViewMode('monthly')}
+              className={`px-4 py-2 rounded-lg flex items-center gap-2 ${viewMode === 'monthly' ? 'bg-primary-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+            >
+              <Calendar size={18} />
+              Monthly
+            </button>
+          </div>
+        </div>
+
+        {/* AI Insights Section */}
+        <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-6 border border-purple-200">
+          <div className="flex justify-between items-center mb-4">
+            <div className="flex items-center gap-2">
+              <Sparkles className="text-purple-600" size={24} />
+              <h2 className="text-2xl font-bold text-gray-900">🤖 AI Financial Insights</h2>
+            </div>
+            <button
+              onClick={fetchAIInsights}
+              disabled={loadingAI}
+              className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {loadingAI ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <Sparkles size={18} />
+                  Get AI Insights
+                </>
+              )}
+            </button>
+          </div>
+
+          {aiInsights && !aiInsights.error && (
+            <div className="bg-white rounded-lg p-6 space-y-4">
+              <div className="space-y-4">
+                <div className="whitespace-pre-wrap text-gray-800 leading-relaxed" style={{
+                  fontFamily: 'system-ui, -apple-system, sans-serif',
+                  fontSize: '15px',
+                  lineHeight: '1.8'
+                }}>
+                  {aiInsights.ai_analysis}
+                </div>
+              </div>
+              
+              {/* Expense Breakdown */}
+              {aiInsights.expense_breakdown && (
+                <div className="border-t pt-4">
+                  <h3 className="font-semibold mb-3 text-gray-900">📊 Expense Breakdown</h3>
+                  <div className="grid grid-cols-2 gap-2">
+                    {Object.entries(aiInsights.expense_breakdown).map(([category, amount]: [string, any]) => (
+                      <div key={category} className="flex justify-between py-2 border-b">
+                        <span className="text-gray-700">{category}</span>
+                        <span className="font-medium text-gray-900">${amount.toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {/* Dismiss Button */}
+              <div className="border-t pt-4">
+                <button
+                  onClick={() => setAiInsights(null)}
+                  className="w-full px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition"
+                >
+                  Dismiss Analysis
+                </button>
+              </div>
+            </div>
+          )}
+
+          {aiInsights && aiInsights.error && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <p className="text-yellow-800">{aiInsights.error}</p>
+            </div>
+          )}
+
+          {!aiInsights && !loadingAI && (
+            <div className="text-center py-8">
+              <p className="text-gray-600 mb-4">Click "Get AI Insights" to analyze your financial data with Watson AI</p>
+              <p className="text-sm text-gray-500">AI will provide cost savings opportunities, insights, and recommendations</p>
+            </div>
+          )}
+        </div>
+
+        {/* Monthly View Table */}
+        {viewMode === 'monthly' && monthlyData.length > 0 && (
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="px-6 py-4 border-b">
+              <h2 className="text-xl font-bold text-gray-900">Monthly Performance</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Month</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Revenue</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Expenses</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Profit</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Margin</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Weeks</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {monthlyData.map((month) => (
+                    <tr key={month.month} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 text-sm font-medium text-gray-900">{month.month}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900">${month.total_revenue.toLocaleString()}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900">${month.total_expenses.toLocaleString()}</td>
+                      <td className={`px-6 py-4 text-sm font-bold ${month.total_profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        ${month.total_profit.toLocaleString()}
+                      </td>
+                      <td className={`px-6 py-4 text-sm font-bold ${month.profit_margin >= 20 ? 'text-green-600' : month.profit_margin >= 10 ? 'text-yellow-600' : 'text-red-600'}`}>
+                        {month.profit_margin}%
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">{month.weeks.length} weeks</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* Add/Edit Record Form */}
         {showForm && (
           <div className="bg-white p-6 rounded-lg shadow">
@@ -302,8 +492,9 @@ export default function Money() {
           </div>
         )}
 
-        {/* Financial Records Table */}
-        <div className="bg-white rounded-lg shadow overflow-hidden">
+        {/* Financial Records Table - Weekly View */}
+        {viewMode === 'weekly' && (
+          <div className="bg-white rounded-lg shadow overflow-hidden">
           <div className="px-6 py-4 border-b">
             <h2 className="text-xl font-bold text-gray-900">Weekly Performance</h2>
           </div>
@@ -352,6 +543,7 @@ export default function Money() {
             </table>
           </div>
         </div>
+        )}
 
         {/* Week Detail Modal */}
         {selectedWeek && !isEditing && (
