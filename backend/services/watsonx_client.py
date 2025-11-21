@@ -14,11 +14,17 @@ class WatsonXClient:
         self.project_id = os.getenv("WATSONX_PROJECT_ID")
         self.url = os.getenv("WATSONX_URL", "https://us-south.ml.cloud.ibm.com")
         
-        # Require WatsonX credentials - no fallback
+        # Validate credentials
         if not self.api_key:
-            raise ValueError("WATSONX_API_KEY environment variable is required")
+            raise ValueError("WATSONX_API_KEY is required")
         if not self.project_id:
-            raise ValueError("WATSONX_PROJECT_ID environment variable is required")
+            raise ValueError("WATSONX_PROJECT_ID is required")
+        if self.api_key.startswith("ApiKey-"):
+            raise ValueError(
+                "Invalid API key format! You provided the Key ID instead of the actual key.\n"
+                "Go to https://cloud.ibm.com/iam/apikeys and create a NEW key.\n"
+                "Copy the LONG string shown (NOT the Key ID)."
+            )
         
         print("=" * 60)
         print("🤖 WATSONX AI ENABLED")
