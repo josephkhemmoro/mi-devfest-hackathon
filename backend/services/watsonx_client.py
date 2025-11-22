@@ -161,28 +161,49 @@ JSON Response:"""
     def generate_schedule(
         self, 
         week_start: str, 
-        staffing_rules: List[Dict], 
+        shift_slots: List[Dict], 
         employees: List[Dict],
         preferences: str = "",
         current_schedule: List[Dict] = None,
-        store_hours: Dict = None,
-        shift_slots: List[Dict] = None
+        store_hours: Dict = None
     ) -> List[Dict[str, Any]]:
         """
-        Generate optimal employee schedule using WatsonX.
+        Generate optimal employee schedule using WatsonX based on shift slots.
         
         Input:
         - week_start: "2024-01-01"
-        - staffing_rules: [{"day": "fri", "required": 5}]
-        - employees: [{"id": 1, "strength": "strong", "availability": ["fri"]}]
+        - shift_slots: [{"day_of_week": "fri", "slot_name": "morning", "start_time": "09:00", "end_time": "13:00", "required_count": 2}]
+        - employees: [{"id": 1, "strength": "shiftleader", "availability": ["fri"]}]
         
-        Output: [{"employee_id": 1, "day": "fri"}]
+        Output: [{"employee_id": 1, "day": "fri", "start_time": "09:00", "end_time": "13:00"}]
         """
         print("🤖 Calling WatsonX AI for schedule generation...")
         print(f"   Week starting: {week_start}")
-        print(f"   {len(employees)} employees, {len(staffing_rules)} days to schedule")
+        print(f"   {len(employees)} employees, {len(shift_slots)} shift slots to fill")
+        print(f"   📊 Shift Slots: {json.dumps(shift_slots, indent=2)}")
         
-        preferences_section = f"\n\nAdditional Preferences:\n{preferences}\n" if preferences.strip() else ""
+        if preferences.strip():
+            preferences_section = f"""
+
+🚨 CRITICAL USER REQUIREMENTS (HIGHEST PRIORITY - MUST FOLLOW):
+{preferences}
+
+YOU MUST STRICTLY FOLLOW THESE REQUIREMENTS WHEN SELECTING EMPLOYEES.
+For example:
+- If it says "shift leader only on weekends", ONLY assign employees with strength="shiftleader" on Saturday and Sunday
+- If it says "no new employees on busy days", do NOT assign employees with strength="new" on those days
+- These preferences override all other rules
+
+"""
+        else:
+            preferences_section = ""
+        
+        if preferences.strip():
+            print(f"\n   💬 AI Preferences provided by user:")
+            print(f"      \"{preferences}\"")
+            print(f"   ⚠️  AI MUST follow these preferences when selecting employees!")
+        else:
+            print(f"   💬 No AI preferences provided - using default rules only")
         
         current_schedule_section = ""
         if current_schedule:
@@ -192,27 +213,39 @@ JSON Response:"""
         if store_hours:
             store_hours_section = f"\n\nStore Hours (schedule shifts within these times):\n{json.dumps(store_hours, indent=2)}\n"
         
-        shift_slots_section = ""
-        if shift_slots:
-            shift_slots_section = f"\n\nShift Slots (assign employees to these specific time slots):\n{json.dumps(shift_slots, indent=2)}\n"
-        
-        prompt = f"""You are a scheduling AI for a small business. Create an optimal employee schedule.
+        prompt = f"""You are a scheduling AI for a small business. Create an optimal employee schedule based on shift slots.
 
-Rules:
-1. ONLY schedule employees who are available that day
-2. NEVER schedule the same employee twice in one day  
-3. Meet the required staff count for each day
-4. ONLY schedule shifts during store operating hours (ignore closed days)
-5. IMPORTANT: If shift slots are provided, you MUST use ONLY those exact time slots. Match employees to the configured slots - DO NOT create custom times. Each shift MUST use the start_time and end_time from one of the shift_slots for that day.
-6. Pair SHIFTLEADER employees with NEW employees when possible
-7. Distribute shifts evenly across employees
-8. If not enough staff available, schedule as many as possible
-9. When shift_slots are configured, create one shift per slot per employee (respecting the required_count for each slot){preferences_section}
+🎯 YOUR PRIMARY GOAL: For each shift slot below, create EXACTLY "required_count" shifts with different employees.
+{preferences_section}
+EMPLOYEE ROLES (CRITICAL - READ THE "strength" FIELD):
+Each employee has a "strength" field that defines their role:
+- "shiftleader" = SHIFT LEADER (experienced, can supervise)
+- "normal" = REGULAR EMPLOYEE (standard worker)
+- "new" = NEW EMPLOYEE (needs supervision)
+
+IMPORTANT: Weekends = Saturday (sat) and Sunday (sun) ONLY
+
+CRITICAL RULES - SHIFT SLOT SCHEDULING:
+1. For EVERY shift slot listed below, create exactly "required_count" number of shifts
+2. Each shift MUST use the EXACT "start_time" and "end_time" from the slot - DO NOT modify times
+3. Example: If Monday has a slot "morning" with required_count: 1, start_time: "09:00", end_time: "13:00"
+   → Create 1 shift: {{"employee_id": "...", "day": "mon", "start_time": "09:00", "end_time": "13:00"}}
+4. Example: If Friday has a slot "evening" with required_count: 3, start_time: "18:00", end_time: "22:00"
+   → Create 3 shifts with 3 DIFFERENT employees, all with same times: "18:00" to "22:00"
+5. The "day_of_week" in slots uses 3-letter codes (mon, tue, wed, thu, fri, sat, sun) - use these exact codes in your output
+
+Other Rules:
+1. ONLY schedule employees who are available on that day (check their "availability" array)
+2. NEVER schedule the same employee for multiple overlapping time slots
+3. ONLY schedule shifts during store operating hours (skip days marked as "closed": true)
+4. When selecting employees, CHECK THE "strength" FIELD - employees with "shiftleader" are shift leaders
+5. Distribute shifts evenly across employees throughout the week
+6. If not enough staff available for a slot, assign as many as possible (but try to meet required_count)
 
 Week Start: {week_start}
 
-Staffing Requirements:
-{json.dumps(staffing_rules, indent=2)}{store_hours_section}{shift_slots_section}
+Shift Slots to Fill (create "required_count" shifts for EACH slot below):
+{json.dumps(shift_slots, indent=2)}{store_hours_section}
 
 Available Employees:
 {json.dumps(employees, indent=2)}{current_schedule_section}

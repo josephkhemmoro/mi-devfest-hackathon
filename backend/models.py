@@ -114,21 +114,6 @@ class EmployeeResponse(BaseModel):
     active: bool
     availability: List[str]
 
-# ==================== STAFFING MODELS ====================
-
-class StaffingRuleCreate(BaseModel):
-    day_of_week: Literal['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
-    required_count: int = Field(ge=0)
-
-class StaffingRuleUpdate(BaseModel):
-    required_count: int = Field(ge=0)
-
-class StaffingRuleResponse(BaseModel):
-    id: int
-    business_id: str
-    day_of_week: str
-    required_count: int
-
 # ==================== SCHEDULE MODELS ====================
 
 class ShiftSlotCreate(BaseModel):

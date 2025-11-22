@@ -86,3 +86,36 @@ def calculate_schedule_coverage(shifts: List[Dict], staffing_rules: List[Dict]) 
         }
     
     return coverage
+
+def calculate_slot_coverage(shifts: List[Dict], shift_slots: List[Dict]) -> Dict:
+    """
+    Calculate how well the schedule fills shift slots.
+    Each shift slot requires 'required_count' employees.
+    Returns: {"mon-morning": {"required": 2, "scheduled": 2, "coverage_pct": 100}}
+    """
+    coverage = {}
+    
+    # Count shifts per slot (match by day + start_time + end_time for precision)
+    slot_counts = {}
+    for shift in shifts:
+        # Create a key for this shift based on day and exact times
+        key = f"{shift['day']}-{shift.get('start_time', 'unknown')}-{shift.get('end_time', 'unknown')}"
+        slot_counts[key] = slot_counts.get(key, 0) + 1
+    
+    # Compare to shift slot requirements
+    for slot in shift_slots:
+        slot_key = f"{slot['day_of_week']}-{slot['slot_name']}"
+        required = slot.get('required_count', 1)
+        
+        # Match by exact day and times
+        time_key = f"{slot['day_of_week']}-{slot['start_time']}-{slot['end_time']}"
+        scheduled = slot_counts.get(time_key, 0)
+        
+        coverage[slot_key] = {
+            "required": required,
+            "scheduled": scheduled,
+            "coverage_pct": round((scheduled / required * 100) if required > 0 else 100, 1),
+            "slot_times": f"{slot['start_time']}-{slot['end_time']}"
+        }
+    
+    return coverage

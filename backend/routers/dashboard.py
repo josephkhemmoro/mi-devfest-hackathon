@@ -1,4 +1,3 @@
-"""Dashboard routes"""
 from fastapi import APIRouter, Depends
 from models import DashboardStats
 from auth import get_current_user
@@ -9,11 +8,8 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 @router.get("/stats", response_model=DashboardStats)
 async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
-    """Get dashboard statistics for current business"""
     business_id = current_user["business_id"]
     supabase = get_supabase()
-    
-    # Get inventory stats
     inventory_result = supabase.table("inventory_items")\
         .select("current_quantity, minimum_quantity")\
         .eq("business_id", business_id)\
@@ -22,30 +18,36 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
     total_inventory = len(inventory_result.data)
     low_stock = sum(1 for item in inventory_result.data if 0 < item["current_quantity"] < item["minimum_quantity"])
     out_of_stock = sum(1 for item in inventory_result.data if item["current_quantity"] == 0)
-    
-    # Get employee stats
-    employees_result = supabase.table("employees")\
-        .select("active")\
+    employees_result = supabase.table("profiles")\
+        .select("is_active")\
         .eq("business_id", business_id)\
         .execute()
     
     total_employees = len(employees_result.data)
-    active_employees = sum(1 for emp in employees_result.data if emp["active"])
-    
-    # Get upcoming shifts (next 7 days)
+    active_employees = sum(1 for emp in employees_result.data if emp.get("is_active", True))
     today = datetime.now().date()
     week_from_now = today + timedelta(days=7)
+    earliest_week_start = today - timedelta(days=7)
     
     shifts_result = supabase.table("shifts")\
-        .select("week_start")\
+        .select("week_start, day_of_week")\
         .eq("business_id", business_id)\
-        .gte("week_start", today.isoformat())\
+        .gte("week_start", earliest_week_start.isoformat())\
         .lte("week_start", week_from_now.isoformat())\
         .execute()
     
-    upcoming_shifts = len(shifts_result.data)
+    day_offset = {
+        'mon': 0, 'tue': 1, 'wed': 2, 'thu': 3,
+        'fri': 4, 'sat': 5, 'sun': 6
+    }
     
-    # Get today's reminders
+    upcoming_shifts = 0
+    for shift in shifts_result.data:
+        week_start = datetime.fromisoformat(shift['week_start']).date()
+        shift_date = week_start + timedelta(days=day_offset[shift['day_of_week']])
+        if today <= shift_date <= week_from_now:
+            upcoming_shifts += 1
+    
     day_names = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
     today_day = day_names[today.weekday()]
     

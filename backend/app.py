@@ -309,22 +309,9 @@ async def upload_logo(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Logo upload failed: {str(e)}")
 
-@app.get("/api/business/{business_id}", response_model=BusinessResponse)
-async def get_business(business_id: str):
-    """Get business details"""
-    supabase = get_supabase()
-    
-    result = supabase.table("businesses")\
-        .select("*")\
-        .eq("id", business_id)\
-        .execute()
-    
-    if not result.data:
-        raise HTTPException(status_code=404, detail="Business not found")
-    
-    return result.data[0]
-
 # ==================== STORE HOURS ====================
+# NOTE: These routes MUST come before the generic /api/business/{business_id} route
+# to avoid route collision where "store-hours" is interpreted as a business_id
 
 class DayHours(BaseModel):
     open_time: str = "09:00"
@@ -387,6 +374,23 @@ async def update_store_hours(
         "message": "Store hours updated successfully!",
         "hours": hours_dict
     }
+
+# ==================== BUSINESS ====================
+
+@app.get("/api/business/{business_id}", response_model=BusinessResponse)
+async def get_business(business_id: str):
+    """Get business details"""
+    supabase = get_supabase()
+    
+    result = supabase.table("businesses")\
+        .select("*")\
+        .eq("id", business_id)\
+        .execute()
+    
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Business not found")
+    
+    return result.data[0]
 
 if __name__ == "__main__":
     import uvicorn

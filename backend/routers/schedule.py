@@ -3,7 +3,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import List
 from datetime import datetime
 from models import (
-    StaffingRuleCreate, StaffingRuleUpdate, StaffingRuleResponse,
     ScheduleGenerateRequest, ShiftResponse,
     ShiftSlotCreate, ShiftSlotUpdate, ShiftSlotResponse
 )
@@ -11,103 +10,12 @@ from auth import get_current_user
 from db import get_supabase
 from services.watsonx_client import watsonx_client
 from services.schedule_engine import (
-    get_week_days, validate_schedule, calculate_schedule_coverage
+    get_week_days, validate_schedule, calculate_schedule_coverage, calculate_slot_coverage
 )
 
 router = APIRouter(prefix="/api/schedule", tags=["schedule"])
 
-# ==================== STAFFING RULES ====================
-
-@router.get("/staffing-rules", response_model=List[StaffingRuleResponse])
-async def get_staffing_rules(current_user: dict = Depends(get_current_user)):
-    """Get staffing rules for current business"""
-    business_id = current_user["business_id"]
-    supabase = get_supabase()
-    
-    result = supabase.table("staffing_rules")\
-        .select("*")\
-        .eq("business_id", business_id)\
-        .execute()
-    
-    return result.data
-
-@router.post("/staffing-rules", response_model=StaffingRuleResponse)
-async def create_staffing_rule(
-    rule: StaffingRuleCreate,
-    current_user: dict = Depends(get_current_user)
-):
-    """Create staffing rule for a day"""
-    business_id = current_user["business_id"]
-    supabase = get_supabase()
-    
-    # Check if rule already exists for this day
-    existing = supabase.table("staffing_rules")\
-        .select("*")\
-        .eq("business_id", business_id)\
-        .eq("day_of_week", rule.day_of_week)\
-        .execute()
-    
-    if existing.data:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Rule already exists for {rule.day_of_week}. Use PUT to update."
-        )
-    
-    rule_data = {
-        "business_id": business_id,
-        **rule.model_dump()
-    }
-    
-    result = supabase.table("staffing_rules").insert(rule_data).execute()
-    
-    return result.data[0]
-
-@router.put("/staffing-rules/{day}", response_model=StaffingRuleResponse)
-async def update_staffing_rule(
-    day: str,
-    rule_update: StaffingRuleUpdate,
-    current_user: dict = Depends(get_current_user)
-):
-    """Update staffing rule for a day"""
-    business_id = current_user["business_id"]
-    supabase = get_supabase()
-    
-    # Verify rule exists
-    existing = supabase.table("staffing_rules")\
-        .select("*")\
-        .eq("business_id", business_id)\
-        .eq("day_of_week", day)\
-        .execute()
-    
-    if not existing.data:
-        raise HTTPException(status_code=404, detail="Staffing rule not found")
-    
-    result = supabase.table("staffing_rules")\
-        .update({"required_count": rule_update.required_count})\
-        .eq("business_id", business_id)\
-        .eq("day_of_week", day)\
-        .execute()
-    
-    return result.data[0]
-
-@router.delete("/staffing-rules/{day}")
-async def delete_staffing_rule(
-    day: str,
-    current_user: dict = Depends(get_current_user)
-):
-    """Delete staffing rule"""
-    business_id = current_user["business_id"]
-    supabase = get_supabase()
-    
-    supabase.table("staffing_rules")\
-        .delete()\
-        .eq("business_id", business_id)\
-        .eq("day_of_week", day)\
-        .execute()
-    
-    return {"message": "Staffing rule deleted"}
-
-# ==================== SHIFT SLOTS ====================
+# ==================== SHIFT SLOTS ===================="
 
 @router.get("/shift-slots", response_model=List[ShiftSlotResponse])
 async def get_shift_slots(current_user: dict = Depends(get_current_user)):
@@ -198,22 +106,28 @@ async def generate_schedule(
     supabase = get_supabase()
     
     week_start = request.week_start.isoformat()
+    ai_preferences = request.preferences or ""
     
-    # Get staffing rules
-    rules_result = supabase.table("staffing_rules")\
+    print(f"\n{'='*70}")
+    print(f"[SCHEDULE_REQUEST] Generating schedule for week: {week_start}")
+    print(f"[AI_PREFERENCES] User provided preferences: {repr(ai_preferences)}")
+    print(f"{'='*70}\n")
+    
+    # Get shift slots configured for the business (REQUIRED for scheduling)
+    shift_slots_result = supabase.table("shift_slots")\
         .select("*")\
         .eq("business_id", business_id)\
+        .order("day_of_week, start_time")\
         .execute()
     
-    staffing_rules = [
-        {"day": rule["day_of_week"], "required": rule["required_count"]}
-        for rule in rules_result.data
-    ]
+    shift_slots = shift_slots_result.data if shift_slots_result.data else []
     
-    if not staffing_rules:
+    print(f"[SHIFT_SLOTS] Fetched from database: {shift_slots}")
+    
+    if not shift_slots:
         raise HTTPException(
             status_code=400, 
-            detail="No staffing rules configured. Set required staff counts first."
+            detail="No shift slots configured. Configure shift slots in the Schedule page first."
         )
     
     # Get active employees from profiles (exclude admins) with availability  
@@ -259,12 +173,17 @@ async def generate_schedule(
         
         print(f"[AVAILABILITY] Final available days for {emp['full_name']}: {available_days}")
         
-        employees.append({
+        employee_data = {
             "id": emp["id"],
             "full_name": emp["full_name"],
             "strength": emp.get("strength", "normal"),
             "availability": available_days
-        })
+        }
+        employees.append(employee_data)
+        
+        # Log employee role
+        role_emoji = "👑" if employee_data["strength"] == "shiftleader" else "🆕" if employee_data["strength"] == "new" else "👤"
+        print(f"[EMPLOYEE] {role_emoji} {employee_data['full_name']}: {employee_data['strength'].upper()}")
     
     # Get current shifts for this week to provide context
     current_shifts_result = supabase.table("shifts")\
@@ -296,25 +215,19 @@ async def generate_schedule(
             "sunday": {"open_time": "09:00", "close_time": "17:00", "closed": True}
         }
     
-    # Get shift slots configured for the business
-    shift_slots_result = supabase.table("shift_slots")\
-        .select("*")\
-        .eq("business_id", business_id)\
-        .order("day_of_week, start_time")\
-        .execute()
     
-    shift_slots = shift_slots_result.data if shift_slots_result.data else []
-    
-    # Generate schedule using WatsonX with preferences and current schedule context
+    # Generate schedule using WatsonX based on shift slots
     shifts = watsonx_client.generate_schedule(
         week_start=week_start, 
-        staffing_rules=staffing_rules, 
+        shift_slots=shift_slots,
         employees=employees,
-        preferences=getattr(request, 'preferences', ''),
+        preferences=ai_preferences,
         current_schedule=current_schedule,
-        store_hours=store_hours,
-        shift_slots=shift_slots
+        store_hours=store_hours
     )
+    
+    print(f"\n[AI_GENERATED] Total shifts created: {len(shifts)}")
+    print(f"[AI_GENERATED] Expected total slots to fill: {sum(slot.get('required_count', 1) for slot in shift_slots)}")
     
     # Validate schedule
     validation = validate_schedule(shifts, employees)
@@ -355,8 +268,40 @@ async def generate_schedule(
     if shift_records:
         supabase.table("shifts").insert(shift_records).execute()
     
-    # Calculate coverage
-    coverage = calculate_schedule_coverage(shifts, staffing_rules)
+    # Calculate coverage based on shift slots
+    coverage = calculate_slot_coverage(shifts, shift_slots)
+    
+    print(f"\n[COVERAGE] Shift slot coverage analysis:")
+    print(f"{'='*70}")
+    for slot_key, stats in coverage.items():
+        status = "✅" if stats["coverage_pct"] >= 100 else "⚠️"
+        print(f"  {status} {slot_key} ({stats['slot_times']})")
+        print(f"     Required: {stats['required']} employee(s) | Scheduled: {stats['scheduled']} employee(s) | Coverage: {stats['coverage_pct']}%")
+    print(f"{'='*70}\n")
+    
+    # Verify AI preferences were respected - check employee roles per day
+    print(f"\n[PREFERENCE_CHECK] Analyzing shift leader assignments:")
+    print(f"User preference: {repr(ai_preferences)}")
+    print(f"{'='*70}")
+    employee_lookup = {emp["id"]: emp for emp in employees}
+    day_assignments = {}
+    for shift in shifts:
+        day = shift["day"]
+        emp = employee_lookup.get(shift["employee_id"])
+        if day not in day_assignments:
+            day_assignments[day] = []
+        if emp:
+            day_assignments[day].append(f"{emp['full_name']} ({emp['strength']})")
+    
+    weekends = ["sat", "sun"]
+    for day in ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]:
+        if day in day_assignments:
+            shift_leader_count = sum(1 for assign in day_assignments[day] if "shiftleader" in assign)
+            is_weekend = day in weekends
+            weekend_indicator = "🌴 WEEKEND" if is_weekend else "📅 Weekday"
+            icon = "👑" if shift_leader_count > 0 else "👤"
+            print(f"  {icon} {day.upper()} ({weekend_indicator}): {', '.join(day_assignments[day])}")
+    print(f"{'='*70}\n")
     
     return {
         "message": "Schedule generated",

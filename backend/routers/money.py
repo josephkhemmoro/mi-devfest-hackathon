@@ -269,34 +269,60 @@ async def analyze_financials_with_ai(
     net_profit = total_revenue - total_expenses
     profit_margin = (net_profit / total_revenue * 100) if total_revenue > 0 else 0
     
-    # Create prompt for Watson
-    prompt = f"""You are a financial analyst. Analyze this data and respond ONLY with the formatted output. NO explanations, NO revisions, NO notes.
+    # Find best and worst performing weeks for comparison
+    weeks_sorted = sorted(result.data, key=lambda x: x.get('profit_margin', 0), reverse=True)
+    best_week = weeks_sorted[0] if weeks_sorted else None
+    worst_week = weeks_sorted[-1] if len(weeks_sorted) > 1 else None
+    recent_week = result.data[0] if result.data else None  # Most recent (already desc sorted)
+    
+    # Calculate averages for comparison
+    avg_revenue = total_revenue / len(result.data) if result.data else 0
+    avg_profit_margin = sum(r.get('profit_margin', 0) for r in result.data) / len(result.data) if result.data else 0
+    
+    # Determine if current situation is critical
+    is_critical = profit_margin < 10 or (recent_week and recent_week.get('profit_margin', 0) < 10)
+    
+    comparison_data = ""
+    if best_week and recent_week:
+        comparison_data = f"""
+BEST WEEK: Week of {best_week.get('week_start')} - {best_week.get('profit_margin', 0):.1f}% margin, ${best_week.get('net_profit', 0):,.0f} profit
+RECENT WEEK: Week of {recent_week.get('week_start')} - {recent_week.get('profit_margin', 0):.1f}% margin, ${recent_week.get('net_profit', 0):,.0f} profit
+AVERAGE: {avg_profit_margin:.1f}% margin, ${avg_revenue:,.0f} weekly revenue"""
+    
+    # Create enhanced prompt for Watson
+    prompt = f"""You are a financial analyst for a small business. Analyze this data and provide actionable insights.
 
-DATA:
+CURRENT PERFORMANCE:
 Revenue: ${total_revenue:,.2f} | Expenses: ${total_expenses:,.2f} | Profit: ${net_profit:,.2f} ({profit_margin:.1f}%)
+Status: {"🚨 CRITICAL - Under 10% margin" if is_critical else "⚠️ Warning - Below 20% target" if profit_margin < 20 else "✅ Healthy"}
 
-TOP EXPENSES:
-{chr(10).join([f'{cat}: ${amt:,.2f} ({amt/total_expenses*100:.1f}%)' for cat, amt in sorted(expense_categories.items(), key=lambda x: x[1], reverse=True)[:3] if amt > 0])}
+TOP EXPENSE CATEGORIES:
+{chr(10).join([f'{cat}: ${amt:,.2f} ({amt/total_expenses*100:.1f}% of expenses)' for cat, amt in sorted(expense_categories.items(), key=lambda x: x[1], reverse=True)[:3] if amt > 0])}
+{comparison_data}
 
-Return ONLY this format (no other text):
+{"🚨 CRITICAL SITUATION DETECTED - Focus on immediate cost reduction!" if is_critical else ""}
 
-KEY INSIGHTS
-• [insight 1 - max 12 words]
-• [insight 2 - max 12 words]
+Return ONLY this format:
 
-COST SAVINGS
-• [action 1 with $ amount - max 10 words]
-• [action 2 with $ amount - max 10 words]
+{"CRITICAL ISSUES (address immediately)" if is_critical else "KEY INSIGHTS"}
+• {f"Profit margin at {profit_margin:.1f}% - need immediate action" if is_critical else "[insight about revenue or efficiency]"}
+• {f"Compare to best week: {best_week.get('profit_margin', 0):.1f}% vs current {recent_week.get('profit_margin', 0) if recent_week else 0:.1f}%" if best_week and recent_week else "[comparison or trend insight]"}
+• [Third insight about expenses or opportunities]
 
-WINS
-• [achievement - max 10 words]
+WHAT'S DIFFERENT FROM GOOD WEEKS
+• {f"Best week had ${best_week.get('gross_sales', 0) - (recent_week.get('gross_sales', 0) if recent_week else 0):,.0f} more revenue" if best_week and recent_week else "[revenue difference]"}
+• {f"Expenses {abs(best_week.get('total_expenses', 0)/(best_week.get('gross_sales', 1) or 1)*100 - (recent_week.get('total_expenses', 0)/(recent_week.get('gross_sales', 1) or 1)*100)) if recent_week else 0:.1f}% higher than best performing week" if best_week and recent_week else "[expense difference]"}
 
-RECOMMENDATIONS
-1. [action - max 8 words]
-2. [action - max 8 words]
-3. [action - max 8 words]
+IMMEDIATE COST SAVINGS (with $ amounts)
+• [Specific expense to cut with dollar amount]
+• [Another cost reduction opportunity with amount]
 
-CRITICAL: Return ONLY the formatted response above. NO additional text. NO explanations. NO revisions. START with "KEY INSIGHTS" and END after the 3rd recommendation."""
+RECOMMENDATIONS TO MATCH BEST PERFORMANCE
+1. [Specific action to increase revenue]
+2. [Specific action to reduce largest expense]
+3. [Specific action to improve efficiency]
+
+Keep responses concise and actionable. Focus on comparing current to best performance."""
 
     try:
         # Call Watson AI using the existing client
@@ -309,10 +335,15 @@ CRITICAL: Return ONLY the formatted response above. NO additional text. NO expla
         analysis = response.strip()
         
         # If Watson added extra text, extract only the formatted section
-        if "KEY INSIGHTS" in analysis:
-            # Find start
-            start_idx = analysis.find("KEY INSIGHTS")
-            
+        # Look for either "KEY INSIGHTS" or "CRITICAL ISSUES"
+        start_markers = ["CRITICAL ISSUES", "KEY INSIGHTS"]
+        start_idx = -1
+        for marker in start_markers:
+            if marker in analysis:
+                start_idx = analysis.find(marker)
+                break
+        
+        if start_idx >= 0:
             # Find end (after 3rd recommendation)
             lines = analysis[start_idx:].split('\n')
             rec_count = 0
@@ -328,15 +359,39 @@ CRITICAL: Return ONLY the formatted response above. NO additional text. NO expla
             if end_idx > start_idx:
                 analysis = analysis[start_idx:end_idx].strip()
         
+        # Add performance comparison data
+        performance_comparison = None
+        if best_week and recent_week:
+            performance_comparison = {
+                "best_week": {
+                    "week_start": best_week.get('week_start'),
+                    "profit_margin": round(best_week.get('profit_margin', 0), 1),
+                    "net_profit": round(best_week.get('net_profit', 0), 2),
+                    "gross_sales": round(best_week.get('gross_sales', 0), 2)
+                },
+                "recent_week": {
+                    "week_start": recent_week.get('week_start'),
+                    "profit_margin": round(recent_week.get('profit_margin', 0), 1),
+                    "net_profit": round(recent_week.get('net_profit', 0), 2),
+                    "gross_sales": round(recent_week.get('gross_sales', 0), 2)
+                },
+                "average": {
+                    "profit_margin": round(avg_profit_margin, 1),
+                    "weekly_revenue": round(avg_revenue, 2)
+                }
+            }
+        
         return {
             "month": month,
             "period_weeks": len(result.data),
+            "is_critical": is_critical,
             "summary": {
                 "revenue": round(total_revenue, 2),
                 "expenses": round(total_expenses, 2),
                 "profit": round(net_profit, 2),
                 "profit_margin": round(profit_margin, 1)
             },
+            "performance_comparison": performance_comparison,
             "expense_breakdown": {k: round(v, 2) for k, v in expense_categories.items() if v > 0},
             "ai_analysis": analysis
         }
