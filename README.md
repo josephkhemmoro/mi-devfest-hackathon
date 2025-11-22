@@ -1,4 +1,4 @@
-# MainStreet Copilot - Multi-Tenant SMB Operating System
+# Astra ERP - Multi-Tenant SMB Operating System
 
 A production-ready, multi-tenant SaaS application for small business management with AI-powered features.
 
